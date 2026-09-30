@@ -455,7 +455,85 @@ pub fn build() -> Vec<Op> {
         // B7 (K3a): measurement absorption, an exact generic post-pass (off = byte-identical).
         ops = mabsorb::absorb(ops);
     }
-    // Preserve original CCX operations: fixed-index sky5 rows do not match this candidate.
+    // SKY_REWRITE: replace SAT-proved linear-span CCX by CX chains using sky5_ycd_rewrite.txt.
+    {
+        let text = include_str!("skywalk_data/sky5_ycd_rewrite.txt");
+        let rows: Vec<(usize, u64, u64, u64, bool, Vec<u64>)> = text
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                let f: Vec<&str> = l.split_whitespace().collect();
+                let ws = if f[5] == "-" {
+                    vec![]
+                } else {
+                    f[5].split(',').map(|x| x.parse().unwrap()).collect()
+                };
+                (
+                    f[0].parse().unwrap(),
+                    f[1].parse().unwrap(),
+                    f[2].parse().unwrap(),
+                    f[3].parse().unwrap(),
+                    f[4] == "1",
+                    ws,
+                )
+            })
+            .collect();
+
+        let hit = |w: usize, c1: u64, c2: u64, t: u64| {
+            w < ops.len() && {
+                let o = &ops[w];
+                o.kind == OperationType::CCX
+                    && o.q_target.0 == t
+                    && o.c_condition == crate::circuit::NO_BIT
+                    && ((o.q_control1.0 == c1 && o.q_control2.0 == c2)
+                        || (o.q_control1.0 == c2 && o.q_control2.0 == c1))
+            }
+        };
+
+        let mut matched: Vec<(usize, bool, Vec<u64>)> = Vec::new();
+        const SEARCH_WINDOW: isize = 500_000;
+        for (w_hint, c1, c2, t, cst, ws) in rows {
+            let lo = (w_hint as isize - SEARCH_WINDOW).max(0) as usize;
+            let hi = (w_hint as isize + SEARCH_WINDOW).min(ops.len() as isize - 1) as usize;
+            let mut candidates = Vec::new();
+            for w in lo..=hi {
+                if hit(w, c1, c2, t) {
+                    candidates.push(w);
+                }
+            }
+            if candidates.len() == 1 {
+                matched.push((candidates[0], cst, ws));
+            } else if candidates.is_empty() {
+                eprintln!("SKY_REWRITE: row at hint {w_hint} (c1={c1}, c2={c2}, t={t}) not found in window");
+            } else {
+                candidates.sort_by_key(|&w| (w as isize - w_hint as isize).abs());
+                matched.push((candidates[0], cst, ws));
+            }
+        }
+
+        eprintln!("SKY_REWRITE matched {} / 57 rows", matched.len());
+        matched.sort_by(|a, b| b.0.cmp(&a.0));
+        matched.dedup_by_key(|m| m.0);
+        for (w, cst, ws) in matched {
+            let t = ops[w].q_target;
+            let mut rep = Vec::new();
+            for q in ws {
+                assert!(QubitId(q) != t);
+                let mut x = Op::empty();
+                x.kind = OperationType::CX;
+                x.q_control1 = QubitId(q);
+                x.q_target = t;
+                rep.push(x);
+            }
+            if cst {
+                let mut x = Op::empty();
+                x.kind = OperationType::X;
+                x.q_target = t;
+                rep.push(x);
+            }
+            ops.splice(w..w + 1, rep);
+        }
+    }
     let nonce: u64 = required_env("TAIL_NONCE");
     let mut x = Op::empty();
     x.kind = OperationType::X;
