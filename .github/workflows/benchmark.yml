@@ -14,7 +14,7 @@ concurrency:
 jobs:
   benchmark:
     name: Benchmark
-    runs-on: blacksmith-32vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     outputs:
       score: ${{ steps.score.outputs.value }}
