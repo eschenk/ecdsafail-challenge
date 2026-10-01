@@ -417,7 +417,14 @@ fn clear_process_env() {
 }
 
 pub fn build() -> Vec<Op> {
+    let do_hunt = std::env::var("SKYWALK_NONCE_HUNT").is_ok();
+    let nonce_start = std::env::var("NONCE_START").ok();
+    let nonce_count = std::env::var("NONCE_COUNT").ok();
+    let hunt_threads = std::env::var("THREADS").ok();
     clear_process_env();
+    if let Some(s) = nonce_start { std::env::set_var("NONCE_START", s); }
+    if let Some(c) = nonce_count { std::env::set_var("NONCE_COUNT", c); }
+    if let Some(t) = hunt_threads { std::env::set_var("THREADS", t); }
     install_skywalk_submission_recipe();
     if std::env::var_os("SKYWALK_SQUARE_HIGH_PROBE").is_some(){square::high_probe();std::process::exit(0);}
     if std::env::var_os("SKYWALK_MODDIV_ADAPTER_PROBE").is_some(){moddiv_adapter::probe();std::process::exit(0);}
@@ -539,7 +546,7 @@ pub fn build() -> Vec<Op> {
             ops.splice(w..w + 1, rep);
         }
     }
-    if std::env::var("SKYWALK_NONCE_HUNT").is_ok() {
+    if do_hunt {
         nonce_hunter::hunt(&ops);
     }
     let nonce: u64 = required_env("TAIL_NONCE");
