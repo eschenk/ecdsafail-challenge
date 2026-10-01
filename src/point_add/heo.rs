@@ -227,7 +227,7 @@ pub fn config_mul() -> &'static HeoConfig {
     CFG.get_or_init(|| {
         let base = config();
         let (mut esw, mut ead) = match std::env::var("HEO_ENVELOPE_MUL") {
-            Ok(path) => {
+            Ok(_path) => {
                 // sky8 submission: the multiply envelope is the package's iA.m.100 (compiled in).
                 let text = include_str!("skywalk_data/sky8_env_mul_iA.m.100.txt").to_owned();
                 parse_envelope(&text)

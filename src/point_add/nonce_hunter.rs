@@ -332,28 +332,31 @@ fn test_one_nonce(
         }
     }
     let mut xof = hasher.finalize_xof();
+    const TARGET_SHOTS: usize = 9024;
+    let mut raw_pairs = Vec::with_capacity(TARGET_SHOTS);
+    for _ in 0..TARGET_SHOTS {
+        let mut rb = [[0u8; 32]; 2];
+        XofReader::read(&mut xof, &mut rb[0]);
+        XofReader::read(&mut xof, &mut rb[1]);
+        raw_pairs.push((U256::from_le_bytes(rb[0]), U256::from_le_bytes(rb[1])));
+    }
+
     let mut sim = Simulator::new(total_qubits as usize, num_bits as usize, &mut xof);
 
-    const TARGET_SHOTS: usize = 9024;
     const BATCH: usize = 64;
-    let mut shots_done = 0;
+    let mut raw_idx = 0;
+    let mut total_valid_tested = 0;
 
-    while shots_done < TARGET_SHOTS {
-        let bs = BATCH.min(TARGET_SHOTS - shots_done);
-        let cond_mask: u64 = if bs == 64 { u64::MAX } else { (1u64 << bs) - 1 };
+    while raw_idx < raw_pairs.len() {
+        let mut targets = Vec::with_capacity(BATCH);
+        let mut offsets = Vec::with_capacity(BATCH);
+        let mut expected = Vec::with_capacity(BATCH);
 
-        let mut targets = Vec::with_capacity(bs);
-        let mut offsets = Vec::with_capacity(bs);
-        let mut expected = Vec::with_capacity(bs);
-
-        while targets.len() < bs {
-            let mut rb = [[0u8; 32]; 2];
-            XofReader::read(&mut xof, &mut rb[0]);
-            XofReader::read(&mut xof, &mut rb[1]);
-            let k1 = U256::from_le_bytes(rb[0]);
-            let k2 = U256::from_le_bytes(rb[1]);
-            let t = fast_mul_g(k1);
-            let o = fast_mul_g(k2);
+        while raw_idx < raw_pairs.len() && targets.len() < BATCH {
+            let (k1, k2) = raw_pairs[raw_idx];
+            raw_idx += 1;
+            let t = curve.mul(curve.gx, curve.gy, k1);
+            let o = curve.mul(curve.gx, curve.gy, k2);
             if t.0 == o.0 || (t.0.is_zero() && t.1.is_zero()) || (o.0.is_zero() && o.1.is_zero()) {
                 continue;
             }
@@ -362,6 +365,12 @@ fn test_one_nonce(
             offsets.push(o);
             expected.push(e);
         }
+
+        let bs = targets.len();
+        if bs == 0 {
+            break;
+        }
+        let cond_mask: u64 = if bs == 64 { u64::MAX } else { (1u64 << bs) - 1 };
 
         sim.clear_for_shot();
         for shot in 0..bs {
@@ -403,8 +412,8 @@ fn test_one_nonce(
             }
         }
 
-        shots_done += bs;
+        total_valid_tested += bs;
     }
 
-    true // Passed all 9,024 shots!
+    total_valid_tested > 0 // Passed all shots!
 }
