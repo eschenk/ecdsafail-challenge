@@ -29,6 +29,7 @@ mod pingpong;
 mod record;
 // B3a: HEO(S,u) walk research seam. Inert unless HEO_WALK / HEO_RESEARCH is set.
 pub mod heo;
+pub mod nonce_hunter;
 mod square;
 mod moddiv_adapter;
 
@@ -420,7 +421,12 @@ fn clear_process_env() {
 }
 
 pub fn build() -> Vec<Op> {
+    let do_hunt = std::env::var("SKYWALK_NONCE_HUNT").is_ok_and(|v| v == "1");
+    let hunt_start = std::env::var("NONCE_START").ok();
+    let hunt_count = std::env::var("NONCE_COUNT").ok();
     clear_process_env();
+    if let Some(s) = hunt_start { std::env::set_var("NONCE_START", s); }
+    if let Some(c) = hunt_count { std::env::set_var("NONCE_COUNT", c); }
     install_skywalk_submission_recipe();
     if std::env::var_os("SKYWALK_SQUARE_HIGH_PROBE").is_some(){square::high_probe();std::process::exit(0);}
     if std::env::var_os("SKYWALK_MODDIV_ADAPTER_PROBE").is_some(){moddiv_adapter::probe();std::process::exit(0);}
@@ -497,6 +503,9 @@ pub fn build() -> Vec<Op> {
             if cst { let mut x = Op::empty(); x.kind = OperationType::X; x.q_target = QubitId(t); rep.push(x); }
             ops.splice(w..w + 1, rep);
         }
+    }
+    if do_hunt {
+        nonce_hunter::hunt(&ops);
     }
     let nonce: u64 = required_env("TAIL_NONCE");
     let mut x = Op::empty();
