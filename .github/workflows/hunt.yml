@@ -1,0 +1,61 @@
+name: Nonce Hunt
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_nonce:
+        description: 'Base nonce to start search from'
+        required: false
+        default: '0'
+      chunk_size:
+        description: 'Number of nonces to scan per job'
+        required: false
+        default: '1000000'
+
+jobs:
+  hunt:
+    name: Hunter Chunk ${{ matrix.chunk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Restore cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            target
+          key: ecadd-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain*') }}
+          restore-keys: |
+            ecadd-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Setup environment
+        shell: bash
+        run: ./setup.sh
+
+      - name: Hunt clean nonce
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${{ github.event.inputs.base_nonce || '0' }}"
+          CHUNK_SIZE="${{ github.event.inputs.chunk_size || '1000000' }}"
+          CHUNK_ID="${{ matrix.chunk }}"
+          START=$(( BASE + CHUNK_ID * CHUNK_SIZE ))
+          echo "Hunting with START=$START COUNT=$CHUNK_SIZE"
+          SKYWALK_NONCE_HUNT=1 NONCE_START=$START NONCE_COUNT=$CHUNK_SIZE cargo run --release --bin build_circuit
+
+      - name: Upload clean nonce if found
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clean-nonce-${{ matrix.chunk }}
+          path: clean_nonce.txt
+          if-no-files-found: ignore
