@@ -469,6 +469,14 @@ pub fn build() -> Vec<Op> {
         // B7 (K3a): measurement absorption, an exact generic post-pass (off = byte-identical).
         ops = mabsorb::absorb(ops);
     }
+    for (i, o) in ops.iter().enumerate() {
+        if o.kind == OperationType::CCX && o.q_target.0 == 583 && ((o.q_control1.0 == 1094 && o.q_control2.0 == 851) || (o.q_control1.0 == 851 && o.q_control2.0 == 1094)) {
+            eprintln!("FOUND ROW 66 at index {}", i);
+        }
+        if o.kind == OperationType::CCX && o.q_target.0 == 1154 && ((o.q_control1.0 == 851 && o.q_control2.0 == 583) || (o.q_control1.0 == 583 && o.q_control2.0 == 851)) {
+            eprintln!("FOUND ROW 67 at index {}", i);
+        }
+    }
     // SKY_REWRITE (sky9 package rows: sky8 rows c1 + c2 transferred to the sky9 op stream, 65 rows, compiled in): replace SAT-proved linear-span CCX by CX chains.
     // Lines: "widx c1 c2 t cst w1,w2,..|-" against this exact op stream (asserted).
     {
